@@ -1008,19 +1008,6 @@ class OktaImplicitIdToken(OAuth2Implicit):
             **kwargs,
         )
 
-class CognitoAuthorizationCode(OAuth2AuthorizationCode):
-    def __init__(
-        self,
-        authorization_server: str,
-        client_id: str,
-        client_secret: str,
-        scope: Union[str, Iterable[str]],
-        **kwargs,
-    ):
-        OAuth2AuthorizationCode.__init__(
-            self,
-        )
-
 
 class OktaAuthorizationCode(OAuth2AuthorizationCode):
     """

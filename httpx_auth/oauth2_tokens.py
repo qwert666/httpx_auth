@@ -208,3 +208,45 @@ class JsonTokenFileCache(TokenMemoryCache):
                     self.tokens = json.load(tokens_cache_file)
         except:
             logger.exception("Cannot load tokens.")
+
+
+class SSMTokenCache(TokenMemoryCache):
+    """
+    Class to manage tokens using Parameter Store in AWS.
+    """
+
+    def __init__(self, path: str, key: str, client):
+        TokenMemoryCache.__init__(self)
+        self.path = path
+        self.key = key
+        self.ssm_client = client
+
+    def _save_tokens(self):
+        try:
+            self.ssm_client.put_parameter(
+                Name=self.path,
+                Description='Cache for authentication tokens',
+                Value=json.dumps(self.tokens),
+                Type='SecureString',
+                Overwrite=True
+            )
+        except Exception as e:
+            logger.exception(f"Error when saving token to Parameter Store: {e}",)
+
+    def _load_tokens(self):
+        try:
+            if not self.tokens:
+                return
+
+            _, expiry = self.tokens[self.key]
+            if expiry > datetime.datetime.now().timestamp():
+                return
+
+            raw = self.ssm_client.get_parameter(
+                Name=self.path,
+                WithDecryption=True
+            )['Parameter']['Value']
+            self.tokens = json.loads(raw)
+
+        except Exception as e:
+            logger.error(f"Error when getting token from Parameter Store: {e}")
