@@ -4,7 +4,7 @@ import os
 import datetime
 import threading
 import logging
-from typing import Union
+from typing import Type, Union
 
 from httpx_auth.errors import InvalidToken, TokenExpiryNotProvided, AuthenticationFailed
 
@@ -117,10 +117,13 @@ class TokenMemoryCache:
             self._load_tokens()
             if key in self.tokens:
                 bearer, expiry = self.tokens[key]
+                print(f"DEBUG: {expiry}")
                 if _is_expired(expiry, early_expiry):
+                    print("EXPIRED")
                     logger.debug(f'Authentication token with "{key}" key is expired.')
                     del self.tokens[key]
                 else:
+                    print("Still GOOD")
                     logger.debug(
                         f"Using already received authentication, will expire on {datetime.datetime.utcfromtimestamp(expiry)} (UTC)."
                     )
@@ -221,8 +224,21 @@ class SSMTokenCache(TokenMemoryCache):
         self.key = key
         self.ssm_client = client
 
+    def _clear(self):
+        try:
+            self.ssm_client.put_parameter(
+                Name=self.path,
+                Value="{}",
+                Type="SecureString",
+                Overwrite=True
+            )
+
+        except:
+            logger.exception("Cannot remove tokens from SSM")
+
     def _save_tokens(self):
         try:
+            logger.debug("saving tokens in SSM")
             self.ssm_client.put_parameter(
                 Name=self.path,
                 Description='Cache for authentication tokens',
@@ -230,23 +246,26 @@ class SSMTokenCache(TokenMemoryCache):
                 Type='SecureString',
                 Overwrite=True
             )
+
         except Exception as e:
-            logger.exception(f"Error when saving token to Parameter Store: {e}",)
+            logger.exception(f"Error when saving token to Parameter Store: {e}")
 
     def _load_tokens(self):
         try:
-            if not self.tokens:
-                return
+            token, expiry = self.tokens.get(self.key, (None, 0))
+            if not token:
+                logger.debug("Token doesnt exists in cache")
 
-            _, expiry = self.tokens[self.key]
-            if expiry > datetime.datetime.now().timestamp():
-                return
-
-            raw = self.ssm_client.get_parameter(
-                Name=self.path,
-                WithDecryption=True
-            )['Parameter']['Value']
-            self.tokens = json.loads(raw)
+            if not _is_expired(expiry, 0):
+                logger.debug("Getting token from cache")
+                pass
+            else:
+                logger.debug("getting token from SSM")
+                raw = self.ssm_client.get_parameter(
+                    Name=self.path,
+                    WithDecryption=True
+                )['Parameter']['Value']
+                self.tokens = json.loads(raw)
 
         except Exception as e:
-            logger.error(f"Error when getting token from Parameter Store: {e}")
+            logger.exception(f"Error when getting token from Parameter Store: {e}")
