@@ -117,13 +117,10 @@ class TokenMemoryCache:
             self._load_tokens()
             if key in self.tokens:
                 bearer, expiry = self.tokens[key]
-                print(f"DEBUG: {expiry}")
                 if _is_expired(expiry, early_expiry):
-                    print("EXPIRED")
                     logger.debug(f'Authentication token with "{key}" key is expired.')
                     del self.tokens[key]
                 else:
-                    print("Still GOOD")
                     logger.debug(
                         f"Using already received authentication, will expire on {datetime.datetime.utcfromtimestamp(expiry)} (UTC)."
                     )
