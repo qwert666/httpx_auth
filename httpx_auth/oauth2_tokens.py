@@ -1,10 +1,12 @@
 import base64
 import json
 import os
+import time
 import datetime
 import threading
 import logging
 from typing import Type, Union
+from botocore.exceptions import ClientError
 
 from httpx_auth.errors import InvalidToken, TokenExpiryNotProvided, AuthenticationFailed
 
@@ -234,18 +236,31 @@ class SSMTokenCache(TokenMemoryCache):
             logger.exception("Cannot remove tokens from SSM")
 
     def _save_tokens(self):
-        try:
-            logger.debug("saving tokens in SSM")
-            self.ssm_client.put_parameter(
-                Name=self.path,
-                Description='Cache for authentication tokens',
-                Value=json.dumps(self.tokens),
-                Type='SecureString',
-                Overwrite=True
-            )
+        retries = 0
+        max_retries = 3
+        wait_time = 1
 
-        except Exception as e:
-            logger.exception(f"Error when saving token to Parameter Store: {e}")
+        while retries < max_retries:
+            try:
+                logger.debug("saving tokens in SSM")
+                self.ssm_client.put_parameter(
+                    Name=self.path,
+                    Description='Cache for authentication tokens',
+                    Value=json.dumps(self.tokens),
+                    Type='SecureString',
+                    Overwrite=True
+                )
+                return
+    
+            except self.ssm_client.exceptions.TooManyUpdates as e:
+                wait_time += 2 ** retries
+                retries += 1
+                logger.info(f"TooManyUpdates error. Retrying {retries}/{max_retries} in {wait_time} seconds...")
+                time.sleep(wait_time)
+    
+            except Exception as e:
+                logger.exception(f"Error when saving token to Parameter Store: {e}")
+                break
 
     def _load_tokens(self):
         try:
